@@ -1,0 +1,12 @@
+SELECT
+  FORMAT_TIMESTAMP('%Y-%m', TIMESTAMP(date)) AS month,
+  COUNT(DISTINCT vendor_name) AS vendor_count
+FROM
+  `munchdev-prod.output_dataform_generated_tables.analytics_supply`
+WHERE
+  total_uploaded_stock > 0
+  AND country = 'Hungary'
+GROUP BY
+  month
+ORDER BY
+  month DESC;
