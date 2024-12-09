@@ -1,0 +1,51 @@
+WITH 
+  weeks AS (
+    SELECT
+      vendor_name,
+      EXTRACT(WEEK FROM date) AS week_number,
+      EXTRACT(YEAR FROM date) AS year_number,
+      SUM(total_uploaded_stock) AS total_stock,
+      CASE
+        WHEN DATE_DIFF(CURRENT_DATE(), date, WEEK) = 1 THEN 'last_week'
+        WHEN DATE_DIFF(CURRENT_DATE(), date, WEEK) = 2 THEN 'week_before_last'
+        ELSE NULL
+      END AS week_category
+    FROM
+      `munchdev-prod.output_dataform_generated_tables.analytics_supply`
+    WHERE
+      date >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY)
+      AND EXTRACT(DAYOFWEEK FROM date) BETWEEN 2 AND 7 -- Filter weeks starting on Monday
+    GROUP BY
+      vendor_name,
+      week_number,
+      year_number,
+      week_category
+  ),
+  comparison AS (
+    SELECT
+      lw.vendor_name,
+      lw.total_stock AS last_week_stock,
+      wb.total_stock AS week_before_last_stock,
+      lw.total_stock - wb.total_stock AS nominal_change,
+      ROUND((lw.total_stock - wb.total_stock) / NULLIF(wb.total_stock, 0) * 100, 2) AS percentage_change
+    FROM
+      weeks lw
+      LEFT JOIN weeks wb
+      ON lw.vendor_name = wb.vendor_name
+      AND lw.week_category = 'last_week'
+      AND wb.week_category = 'week_before_last'
+  )
+SELECT
+  vendor_name,
+  last_week_stock,
+  week_before_last_stock,
+  nominal_change,
+  percentage_change
+FROM
+  comparison
+WHERE
+  nominal_change IS NOT NULL
+ORDER BY
+  nominal_change ASC
+LIMIT
+  10;
