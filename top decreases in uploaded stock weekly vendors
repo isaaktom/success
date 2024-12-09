@@ -2,8 +2,8 @@ WITH
   weeks AS (
     SELECT
       vendor_name,
-      EXTRACT(WEEK FROM date) AS week_number,
-      EXTRACT(YEAR FROM date) AS year_number,
+      DATE_SUB(CURRENT_DATE(), INTERVAL EXTRACT(DAYOFWEEK FROM CURRENT_DATE()) + (CASE WHEN DATE_DIFF(CURRENT_DATE(), date, WEEK) = 1 THEN 7 ELSE 14 END) - 2 DAY) AS week_start_date,
+      DATE_SUB(CURRENT_DATE(), INTERVAL EXTRACT(DAYOFWEEK FROM CURRENT_DATE()) + (CASE WHEN DATE_DIFF(CURRENT_DATE(), date, WEEK) = 1 THEN 1 ELSE 8 END) - 2 DAY) AS week_end_date,
       SUM(total_uploaded_stock) AS total_stock,
       CASE
         WHEN DATE_DIFF(CURRENT_DATE(), date, WEEK) = 1 THEN 'last_week'
@@ -15,10 +15,11 @@ WITH
     WHERE
       date >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY)
       AND EXTRACT(DAYOFWEEK FROM date) BETWEEN 2 AND 7 -- Filter weeks starting on Monday
+      AND country = 'Hungary'
     GROUP BY
       vendor_name,
-      week_number,
-      year_number,
+      week_start_date,
+      week_end_date,
       week_category
   ),
   comparison AS (
@@ -27,7 +28,9 @@ WITH
       lw.total_stock AS last_week_stock,
       wb.total_stock AS week_before_last_stock,
       lw.total_stock - wb.total_stock AS nominal_change,
-      ROUND((lw.total_stock - wb.total_stock) / NULLIF(wb.total_stock, 0) * 100, 2) AS percentage_change
+      ROUND((lw.total_stock - wb.total_stock) / NULLIF(wb.total_stock, 0) * 100, 2) AS percentage_change,
+      CONCAT(CAST(lw.week_start_date AS STRING), ' to ', CAST(lw.week_end_date AS STRING)) AS last_week_period,
+      CONCAT(CAST(wb.week_start_date AS STRING), ' to ', CAST(wb.week_end_date AS STRING)) AS week_before_last_period
     FROM
       weeks lw
       LEFT JOIN weeks wb
@@ -37,6 +40,8 @@ WITH
   )
 SELECT
   vendor_name,
+  last_week_period AS last_week,
+  week_before_last_period AS week_before_last,
   last_week_stock,
   week_before_last_stock,
   nominal_change,
