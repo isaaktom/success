@@ -1,0 +1,109 @@
+WITH 
+formatted_table1 AS (
+  SELECT
+    FORMAT_TIMESTAMP('%Y.%m.%d', TIMESTAMP(created_at)) AS formatted_date,
+    custom_conversation_tag,
+    custom_store_name,
+    custom_company_name,
+    custom_country,
+    team_name,
+    conversation_id
+  FROM
+    `munchdev-prod.intermediate_dataform_generated_tables.stg_intercom_conversations`
+  WHERE
+    TIMESTAMP(created_at) >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL 3 MONTH))
+),
+formatted_table2 AS (
+  SELECT
+    FORMAT_TIMESTAMP('%Y.%m.%d', TIMESTAMP(date)) AS formatted_date,
+    country,
+    chain_name,
+    vendor_name,
+    product_name,
+    quantity,
+    total_gmv,
+    total_uploaded_stock,
+    avg_product_rating
+  FROM
+    `munchdev-prod.output_dataform_generated_tables.analytics_supply`
+  WHERE
+    TIMESTAMP(date) >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL 3 MONTH))
+),
+joined_data AS (
+  SELECT
+    t1.formatted_date AS created_at_date,
+    t2.formatted_date AS supply_date,
+    t2.country,
+    t2.chain_name,
+    t1.custom_store_name,
+    t2.vendor_name,
+    t2.product_name,
+    t2.avg_product_rating,
+    t1.conversation_id,
+    t2.total_gmv,
+    t2.quantity
+  FROM
+    formatted_table1 t1
+  JOIN
+    formatted_table2 t2
+  ON
+    t1.custom_store_name = t2.vendor_name
+),
+vendor_level_data AS (
+  SELECT
+    vendor_name,
+    SUM(quantity) AS total_quantity,
+    COUNT(DISTINCT conversation_id) AS unique_conversation_count,
+    CASE
+      WHEN SUM(quantity) = 0 THEN NULL
+      ELSE ROUND((COUNT(DISTINCT conversation_id) / SUM(quantity)) * 100, 2)
+    END AS complaint_rate_percentage,
+    ROUND(MAX(total_gmv)) AS total_gmv_value
+  FROM
+    joined_data
+  GROUP BY
+    vendor_name
+),
+product_level_data AS (
+  SELECT
+    country,
+    chain_name,
+    vendor_name,
+    product_name,
+    avg_product_rating,
+    COUNT(*) AS number_of_product_ratings
+  FROM
+    joined_data
+  GROUP BY
+    country, chain_name, vendor_name, product_name, avg_product_rating
+),
+first_product_data AS (
+  SELECT
+    vendor_name,
+    MIN(product_name) AS first_product_name
+  FROM
+    product_level_data
+  GROUP BY
+    vendor_name
+)
+SELECT
+  product_level_data.country,
+  product_level_data.chain_name,
+  product_level_data.vendor_name,
+  product_level_data.product_name,
+  product_level_data.avg_product_rating,
+  product_level_data.number_of_product_ratings,
+  CASE WHEN product_level_data.product_name = first_product_data.first_product_name THEN vendor_level_data.total_quantity ELSE NULL END AS total_quantity,
+  CASE WHEN product_level_data.product_name = first_product_data.first_product_name THEN vendor_level_data.unique_conversation_count ELSE NULL END AS unique_conversation_count,
+  CASE WHEN product_level_data.product_name = first_product_data.first_product_name THEN vendor_level_data.complaint_rate_percentage ELSE NULL END AS complaint_rate_percentage,
+  CASE WHEN product_level_data.product_name = first_product_data.first_product_name THEN vendor_level_data.total_gmv_value ELSE NULL END AS total_gmv_value
+FROM
+  product_level_data
+LEFT JOIN
+  vendor_level_data
+ON
+  product_level_data.vendor_name = vendor_level_data.vendor_name
+LEFT JOIN
+  first_product_data
+ON
+  product_level_data.vendor_name = first_product_data.vendor_name
