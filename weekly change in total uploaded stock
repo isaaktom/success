@@ -1,0 +1,36 @@
+WITH 
+weekly_data AS (
+  SELECT
+    DATE_TRUNC(DATE, WEEK(MONDAY)) AS week,
+    SUM(total_uploaded_stock) AS weekly_total_uploaded_stock
+  FROM
+    `munchdev-prod.output_dataform_generated_tables.analytics_supply`
+  WHERE
+    DATE >= DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY), WEEK(MONDAY)) -- Start from two weeks ago
+    AND country = 'Hungary'
+  GROUP BY
+    week
+),
+comparison AS (
+  SELECT
+    week,
+    weekly_total_uploaded_stock,
+    LAG(weekly_total_uploaded_stock) OVER (ORDER BY week) AS previous_week_stock
+  FROM
+    weekly_data
+)
+SELECT
+  FORMAT_DATE('%Y-%m-%d', week) AS week,
+  weekly_total_uploaded_stock,
+  weekly_total_uploaded_stock - previous_week_stock AS nominal_change,
+  CASE 
+    WHEN previous_week_stock = 0 THEN NULL
+    ELSE ROUND(((weekly_total_uploaded_stock - previous_week_stock) / previous_week_stock) * 100, 2)
+  END AS percentage_change
+FROM
+  comparison
+WHERE
+  week IN (
+    DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY), WEEK(MONDAY)),
+    DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY), WEEK(MONDAY))
+  )
