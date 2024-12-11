@@ -1,0 +1,12 @@
+SELECT
+  product_category_name,
+  product_name,
+  country,
+  commission,
+  company_category,
+  sale_price,
+  regular_price,
+  total_uploaded_stock,
+  quantity
+FROM
+  `munchdev-prod.output_dataform_generated_tables.analytics_supply`
