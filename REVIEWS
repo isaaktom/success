@@ -1,0 +1,52 @@
+WITH review_data AS (
+    SELECT  
+        product_id,
+        product_variant_id,
+        rating, -- Include individual ratings without averaging
+        REGEXP_REPLACE(
+            REGEXP_REPLACE(
+                REGEXP_REPLACE(
+                    body, 
+                    r'\{"activeFacets":"",\s*"selectedOptionNames":"[^"]*",\s*"badExperience":"",\s*"vote":"review:text', '' -- Remove unwanted prefix text
+                ),
+                r'_buy_again_1"\}$', 'Would buy from here again' -- Replace _buy_again_1"} at the end of the string
+            ),
+            r'_buy_again_2"\}$', 'Would NOT buy from here again' -- Replace _buy_again_2"} at the end of the string
+        ) AS formatted_body, -- Format the body to remove unwanted text and replace specific phrases
+        summary, -- Include the review summary
+        author_name, -- Include author name
+        author_id, -- Include author ID
+        FORMAT_DATE('%Y-%m-%d', DATE(created_at)) AS review_date -- Format review date as YYYY-MM-DD
+    FROM `munchdev-prod.intermediate_dataform_generated_tables.product_reviews_format`
+),
+
+product_data AS (
+    SELECT DISTINCT 
+        product_variant_id,
+        product_name,
+        vendor_name, -- Include vendor_name
+        company_category,
+        country
+    FROM `munchdev-prod.output_dataform_generated_tables.analytics_supply`
+    WHERE product_variant_id IS NOT NULL -- Ensure product_variant_id is not null
+      AND product_name != 'MunCharity' -- Exclude product_name 'MunCharity'
+      AND total_uploaded_stock > 0 -- Ensure total_uploaded_stock is greater than 0
+)
+
+SELECT 
+    rd.product_id,
+    rd.product_variant_id,
+    rd.rating,
+    rd.formatted_body, -- Include the formatted review body
+    rd.summary, -- Include the review summary
+    rd.author_name, -- Include author name
+    rd.author_id, -- Include author ID
+    rd.review_date,
+    pd.product_name,
+    pd.vendor_name, -- Include vendor_name in final output
+    pd.company_category,
+    pd.country
+FROM review_data rd
+LEFT JOIN product_data pd ON rd.product_variant_id = pd.product_variant_id
+ORDER BY rd.review_date DESC
+LIMIT 100;
