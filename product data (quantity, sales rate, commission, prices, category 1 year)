@@ -1,0 +1,26 @@
+SELECT
+  product_category_name,
+  product_name,
+  country,
+  commission,
+  company_category,
+  sale_price,
+  regular_price,
+  number_of_product_ratings,
+  avg_product_rating,
+  total_uploaded_stock,
+  quantity,
+  -- Calculate discount as percentage, no decimals
+  CASE 
+    WHEN regular_price = 0 THEN 0
+    ELSE CAST((regular_price - sale_price) / regular_price * 100 AS INT64)
+  END AS discount_percentage,
+  -- Calculate sales rate as percentage (quantity / total_uploaded_stock * 100), no decimals
+  CASE 
+    WHEN total_uploaded_stock = 0 THEN 0
+    ELSE CAST((quantity / total_uploaded_stock) * 100 AS INT64)
+  END AS sales_rate_percentage
+FROM
+  `munchdev-prod.output_dataform_generated_tables.analytics_supply`
+WHERE
+  EXTRACT(YEAR FROM date) = EXTRACT(YEAR FROM CURRENT_DATE())
